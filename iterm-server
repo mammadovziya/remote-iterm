@@ -4,6 +4,12 @@
 SOURCE="$0"
 while [ -L "$SOURCE" ]; do SOURCE="$(readlink "$SOURCE")"; done
 DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+
+# Handle global installation: if we're in node_modules/.bin, go up to the package root
+if [[ "$DIR" == *"node_modules"* ]]; then
+  DIR="$(cd "$DIR/../../remote-iterm" && pwd)"
+fi
+
 PIDFILE="$DIR/.iterm-server.pid"
 LOGFILE="$DIR/.iterm-server.log"
 
