@@ -26,11 +26,29 @@ do_start() {
   echo "$SERVER_PID $CLIENT_PID" > "$PIDFILE"
 
   IP=$(get_local_ip)
-  echo ""
-  echo "  Remote iTerm"
-  echo "  Local:    http://localhost:7292"
-  echo "  Network:  http://${IP}:7292"
-  echo ""
+  URL="http://${IP}:7292"
+  node -e "
+    require('$DIR/server/node_modules/qrcode-terminal').generate('$URL', {small: true}, function(qr) {
+      var lines = qr.split('\n').filter(Boolean);
+      var info = [
+        '',
+        '  Remote iTerm',
+        '',
+        '  Local:    http://localhost:7292',
+        '  Network:  $URL',
+        '',
+        '  Scan QR from your phone',
+      ];
+      var max = Math.max(lines.length, info.length);
+      var out = '';
+      for (var i = 0; i < max; i++) {
+        var q = (lines[i] || '').padEnd(30);
+        var t = info[i] || '';
+        out += '  ' + q + t + '\n';
+      }
+      console.log('\n' + out);
+    });
+  " 2>/dev/null
 }
 
 do_stop() {

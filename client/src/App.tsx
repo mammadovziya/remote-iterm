@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Plus, X, Send, Clock, ChevronUp, ChevronDown, CornerDownLeft, Trash2, Keyboard, Terminal, Lock, Unlock, Radio, Bell, Clipboard, Copy, WifiOff } from 'lucide-react';
+import { Plus, X, Send, Clock, ChevronUp, ChevronDown, CornerDownLeft, Trash2, Keyboard, Terminal, Lock, Unlock, Radio, Bell, Clipboard, Copy, WifiOff, Columns2 } from 'lucide-react';
 
 // --- Types ---
 interface Session { id: string; name: string; }
@@ -134,9 +134,18 @@ export default function App() {
   const [alertDone, setAlertDone] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [isLandscape, setIsLandscape] = useState(window.matchMedia('(orientation: landscape)').matches);
-
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitSessionId, setSplitSessionId] = useState<string | null>(null);
+  const [splitContent, setSplitContent] = useState<string>('');
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [focusedPane, setFocusedPane] = useState<'primary' | 'split'>('primary');
+  const [splitWinId, setSplitWinId] = useState<string | null>(null);
+  const [splitTabId, setSplitTabId] = useState<string | null>(null);
+  const [showSplitMap, setShowSplitMap] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const splitContentRef = useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const winIdRef = useRef(selectedWinId);
   const tabIdRef = useRef(selectedTabId);
@@ -149,13 +158,22 @@ export default function App() {
   const alertTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentCacheRef = useRef<Map<string, string>>(new Map());
   const lastBgFetchRef = useRef(0);
+  const splitSessionIdRef = useRef(splitSessionId);
+  const focusedPaneRef = useRef(focusedPane);
+  const splitWinIdRef = useRef(splitWinId);
+  const splitTabIdRef = useRef(splitTabId);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { winIdRef.current = selectedWinId; }, [selectedWinId]);
   useEffect(() => { tabIdRef.current = selectedTabId; }, [selectedTabId]);
+  useEffect(() => { splitSessionIdRef.current = splitSessionId; }, [splitSessionId]);
+  useEffect(() => { focusedPaneRef.current = focusedPane; }, [focusedPane]);
+  useEffect(() => { splitWinIdRef.current = splitWinId; }, [splitWinId]);
+  useEffect(() => { splitTabIdRef.current = splitTabId; }, [splitTabId]);
 
   // Colorized terminal lines (memoized)
   const coloredLines = useMemo(() => colorizeLines(content), [content]);
+  const splitColoredLines = useMemo(() => colorizeLines(splitContent), [splitContent]);
 
   // --- Socket init ---
   useEffect(() => {
@@ -238,7 +256,11 @@ export default function App() {
     s.on('content', (data: { sessionId?: string; content: string }) => {
       if (data.sessionId) {
         contentCacheRef.current.set(data.sessionId, data.content);
-        // Only update displayed content if this is for the active session
+        // Update split pane if this is the split session
+        if (data.sessionId === splitSessionIdRef.current) {
+          setSplitContent(data.content);
+        }
+        // Only update main content if this is for the active session
         const activeWin = stateRef.current.find(w => w.id === winIdRef.current);
         const activeTab = activeWin?.tabs.find(t => t.id === tabIdRef.current);
         const activeSid = activeTab?.sessions[0]?.id;
@@ -281,7 +303,10 @@ export default function App() {
     if (!scrollLocked && contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
-  }, [content, scrollLocked]);
+    if (!scrollLocked && splitContentRef.current) {
+      splitContentRef.current.scrollTop = splitContentRef.current.scrollHeight;
+    }
+  }, [content, splitContent, scrollLocked]);
 
   // Long-running command alert: if content was changing and stops for 4s, vibrate
   useEffect(() => {
@@ -300,6 +325,9 @@ export default function App() {
 
   // --- Helpers ---
   const getActiveSessionId = () => {
+    if (focusedPaneRef.current === 'split' && splitSessionIdRef.current) {
+      return splitSessionIdRef.current;
+    }
     const win = stateRef.current.find(w => w.id === winIdRef.current);
     const tab = win?.tabs.find(t => t.id === tabIdRef.current);
     return tab?.sessions[0]?.id;
@@ -364,24 +392,18 @@ export default function App() {
   };
 
   const handleTabClick = (winId: string, tab: Tab) => {
-    setSelectedWinId(winId);
-    setSelectedTabId(tab.id);
-    // Restore cached content instantly, then request fresh
-    const sid = tab.sessions[0]?.id;
-    if (sid) {
-      const cached = contentCacheRef.current.get(sid);
-      if (cached) setContent(cached);
-      socketRef.current?.emit('getContent', { sessionId: sid });
-    }
-    socketRef.current?.emit('focus', { windowId: winId, tabIndex: tab.index });
-  };
-
-  const handleWindowChange = (winId: string) => {
-    setSelectedWinId(winId);
-    setShowMap(false);
-    const win = state.find(w => w.id === winId);
-    const tab = getSelectedTab(win);
-    if (tab) {
+    if (focusedPane === 'split') {
+      setSplitWinId(winId);
+      setSplitTabId(tab.id);
+      const sid = tab.sessions[0]?.id;
+      if (sid) {
+        setSplitSessionId(sid);
+        const cached = contentCacheRef.current.get(sid);
+        if (cached) setSplitContent(cached);
+        socketRef.current?.emit('getContent', { sessionId: sid });
+      }
+    } else {
+      setSelectedWinId(winId);
       setSelectedTabId(tab.id);
       const sid = tab.sessions[0]?.id;
       if (sid) {
@@ -393,8 +415,71 @@ export default function App() {
     }
   };
 
+  const handleWindowChange = (winId: string) => {
+    if (focusedPane === 'split') {
+      setSplitWinId(winId);
+      setShowMap(false);
+      const win = state.find(w => w.id === winId);
+      const tab = getSelectedTab(win);
+      if (tab) {
+        setSplitTabId(tab.id);
+        const sid = tab.sessions[0]?.id;
+        if (sid) {
+          setSplitSessionId(sid);
+          const cached = contentCacheRef.current.get(sid);
+          if (cached) setSplitContent(cached);
+          socketRef.current?.emit('getContent', { sessionId: sid });
+        }
+      }
+    } else {
+      setSelectedWinId(winId);
+      setShowMap(false);
+      const win = state.find(w => w.id === winId);
+      const tab = getSelectedTab(win);
+      if (tab) {
+        setSelectedTabId(tab.id);
+        const sid = tab.sessions[0]?.id;
+        if (sid) {
+          const cached = contentCacheRef.current.get(sid);
+          if (cached) setContent(cached);
+          socketRef.current?.emit('getContent', { sessionId: sid });
+        }
+        socketRef.current?.emit('focus', { windowId: winId, tabIndex: tab.index });
+      }
+    }
+  };
+
   const handleNewTab = () => socketRef.current?.emit('newTab');
   const handleCloseTab = () => socketRef.current?.emit('closeTab');
+
+  const handleSplitWindowChange = (winId: string) => {
+    setSplitWinId(winId);
+    setShowSplitMap(false);
+    const win = state.find(w => w.id === winId);
+    const tab = getSelectedTab(win);
+    if (tab) {
+      setSplitTabId(tab.id);
+      const sid = tab.sessions[0]?.id;
+      if (sid) {
+        setSplitSessionId(sid);
+        setSplitContent(contentCacheRef.current.get(sid) || '');
+        socketRef.current?.emit('getContent', { sessionId: sid });
+      }
+    }
+    setFocusedPane('split');
+  };
+
+  const handleSplitTabClick = (tab: Tab) => {
+    setSplitTabId(tab.id);
+    const sid = tab.sessions[0]?.id;
+    if (sid) {
+      setSplitSessionId(sid);
+      const cached = contentCacheRef.current.get(sid);
+      if (cached) setSplitContent(cached);
+      socketRef.current?.emit('getContent', { sessionId: sid });
+    }
+    setFocusedPane('split');
+  };
 
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTabLongPress = (tab: Tab) => {
@@ -417,14 +502,43 @@ export default function App() {
     } catch {}
   };
 
+  const handleSplitDrag = (e: React.TouchEvent) => {
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const touch = e.touches[0];
+    const rect = container.getBoundingClientRect();
+    let ratio: number;
+    if (isLandscape) {
+      ratio = (touch.clientX - rect.left) / rect.width;
+    } else {
+      ratio = (touch.clientY - rect.top) / rect.height;
+    }
+    setSplitRatio(Math.min(0.8, Math.max(0.2, ratio)));
+  };
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      const text = focusedPane === 'split' ? splitContent : content;
+      await navigator.clipboard.writeText(text);
     } catch {}
   };
 
   const activeWindow = state.find(w => w.id === selectedWinId);
-  const tabCount = activeWindow?.tabs.length || 0;
+  const splitWindow = state.find(w => w.id === splitWinId);
+  const tabBarWindow = (splitMode && focusedPane === 'split') ? splitWindow : activeWindow;
+  const tabBarSelectedTabId = (splitMode && focusedPane === 'split') ? splitTabId : selectedTabId;
+  const tabCount = tabBarWindow?.tabs.length || 0;
+  const splitTabCount = splitWindow?.tabs.length || 0;
+
+  // All other sessions for split picker (exclude current active)
+  const allSessions = useMemo(() => {
+    const activeTab = activeWindow?.tabs.find(t => t.id === selectedTabId);
+    const activeSid = activeTab?.sessions[0]?.id;
+    return state.flatMap(w => w.tabs.map(t => ({
+      sessionId: t.sessions[0]?.id,
+      name: t.sessions[0]?.name || `Tab ${t.index}`,
+    }))).filter(s => s.sessionId && s.sessionId !== activeSid);
+  }, [state, activeWindow, selectedTabId]);
 
   return (
     <div className="flex flex-col bg-[#0a0a0a] font-mono overflow-hidden select-none relative pt-safe pb-safe-root pl-safe pr-safe" style={{ height: '100dvh' }}>
@@ -510,6 +624,42 @@ export default function App() {
             <Radio className={isLandscape ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
             {!isLandscape && broadcastMode && <span className="text-[7px] font-bold leading-none tracking-wider">CAST</span>}
           </button>
+          {/* Split pane toggle */}
+          <button
+            onClick={() => {
+              if (splitMode) { setSplitMode(false); setSplitSessionId(null); setSplitContent(''); setFocusedPane('primary'); setSplitWinId(null); setSplitTabId(null); }
+              else if (allSessions.length > 0) {
+                // Find the first session that's not the primary active one
+                const firstOther = allSessions[0];
+                const sid = firstOther.sessionId!;
+                // Find which window/tab owns this session
+                let foundWin: string | null = null;
+                let foundTab: string | null = null;
+                for (const w of state) {
+                  for (const t of w.tabs) {
+                    if (t.sessions[0]?.id === sid) { foundWin = w.id; foundTab = t.id; break; }
+                  }
+                  if (foundWin) break;
+                }
+                setSplitMode(true);
+                setSplitSessionId(sid);
+                setSplitWinId(foundWin);
+                setSplitTabId(foundTab);
+                setSplitContent(contentCacheRef.current.get(sid) || '');
+                socketRef.current?.emit('getContent', { sessionId: sid });
+              }
+            }}
+            className={`flex flex-col items-center gap-0.5 rounded-md border transition-all active:scale-95 ${isLandscape ? 'p-1' : 'p-1.5'}`}
+            style={{
+              color: splitMode ? '#38bdf8' : '#52525b',
+              borderColor: splitMode ? '#38bdf840' : '#3f3f46',
+              backgroundColor: splitMode ? '#38bdf815' : 'transparent',
+              opacity: allSessions.length === 0 && !splitMode ? 0.3 : 1,
+            }}
+          >
+            <Columns2 className={isLandscape ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+            {!isLandscape && splitMode && <span className="text-[7px] font-bold leading-none tracking-wider">SPLIT</span>}
+          </button>
           <button
             onClick={() => state.length > 1 && screenSize && setShowMap(!showMap)}
             className="text-[10px] font-bold tracking-wide px-2.5 py-1 rounded-md border transition-all active:scale-95"
@@ -575,27 +725,77 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Split Window Map (fullscreen overlay) ── */}
+      {showSplitMap && state.length > 1 && screenSize && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+          onClick={() => setShowSplitMap(false)}
+          style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+        >
+          <span className="text-[11px] font-bold tracking-[0.2em] text-zinc-500 mb-4">
+            SELECT SPLIT WINDOW
+          </span>
+          <div
+            className="relative rounded-xl bg-zinc-800/20 border border-zinc-700/30 overflow-hidden w-[85vw]"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              aspectRatio: `${screenSize.width} / ${screenSize.height}`,
+              maxHeight: '45vh',
+            }}
+          >
+            {state.map((win, idx) => {
+              if (!win.bounds) return null;
+              const isSelected = win.id === splitWinId;
+              return (
+                <button
+                  key={win.id}
+                  onClick={() => handleSplitWindowChange(win.id)}
+                  className="absolute rounded-[4px] border transition-all active:opacity-70 flex items-center justify-center"
+                  style={{
+                    left: `${(win.bounds.x / screenSize.width) * 100}%`,
+                    top: `${(win.bounds.y / screenSize.height) * 100}%`,
+                    width: `${(win.bounds.w / screenSize.width) * 100}%`,
+                    height: `${(win.bounds.h / screenSize.height) * 100}%`,
+                    backgroundColor: isSelected ? '#38bdf825' : 'rgba(39,39,42,0.5)',
+                    borderColor: isSelected ? '#38bdf8' : '#3f3f46',
+                    borderWidth: isSelected ? '2px' : '1px',
+                    boxShadow: isSelected ? '0 0 16px rgba(56,189,248,0.25)' : 'none',
+                  }}
+                >
+                  <span
+                    className="font-bold leading-none"
+                    style={{ color: isSelected ? '#38bdf8' : '#71717a', fontSize: '14px' }}
+                  >
+                    {idx + 1}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Tab Bar ── */}
       <div className="flex items-center bg-[#0f0f0f] border-b border-zinc-800/60 flex-shrink-0 overflow-x-auto no-scrollbar">
-        {activeWindow?.tabs.map((tab) => {
-          const isActive = selectedTabId === tab.id;
+        {tabBarWindow?.tabs.map((tab) => {
+          const isActive = tabBarSelectedTabId === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => handleTabClick(activeWindow.id, tab)}
+              onClick={() => handleTabClick(tabBarWindow.id, tab)}
               onTouchStart={() => { longPressRef.current = setTimeout(() => handleTabLongPress(tab), 500); }}
               onTouchEnd={() => { if (longPressRef.current) clearTimeout(longPressRef.current); }}
               onTouchMove={() => { if (longPressRef.current) clearTimeout(longPressRef.current); }}
               className={`flex items-center gap-2 text-[11px] tracking-wider transition-all relative flex-shrink-0 active:opacity-70 ${isLandscape ? 'px-3 min-h-[32px]' : 'px-5 min-h-[44px]'}`}
               style={{
-                color: isActive ? ACCENT : '#52525b',
-                backgroundColor: isActive ? ACCENT + '10' : 'transparent',
+                color: isActive ? (splitMode && focusedPane === 'split' ? '#38bdf8' : ACCENT) : '#52525b',
+                backgroundColor: isActive ? (splitMode && focusedPane === 'split' ? '#38bdf810' : ACCENT + '10') : 'transparent',
               }}
             >
               {isActive && (
                 <div
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: ACCENT }}
+                  style={{ backgroundColor: splitMode && focusedPane === 'split' ? '#38bdf8' : ACCENT }}
                 />
               )}
               <span className="font-semibold whitespace-nowrap">
@@ -604,7 +804,7 @@ export default function App() {
               {isActive && (
                 <div
                   className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                  style={{ backgroundColor: ACCENT }}
+                  style={{ backgroundColor: splitMode && focusedPane === 'split' ? '#38bdf8' : ACCENT }}
                 />
               )}
             </button>
@@ -652,25 +852,144 @@ export default function App() {
 
       {/* ── Terminal Content (colorized) ── */}
       <div
-        ref={contentRef}
-        className="flex-1 overflow-auto relative"
-        style={{ borderLeft: `3px solid ${ACCENT}30` }}
+        ref={splitContainerRef}
+        className={`flex-1 overflow-hidden flex min-h-0 min-w-0 ${splitMode ? (isLandscape ? 'flex-row' : 'flex-col') : 'flex-col'}`}
       >
-        {content ? (
-          <pre className="p-4 text-[12px] leading-[1.7] whitespace-pre-wrap break-words">
-            {coloredLines.map((line, i) => (
-              <span key={i}>
-                <span style={{ color: line.color, fontWeight: line.bold ? 600 : 400 }}>
-                  {line.text}
+        {/* Primary pane */}
+        <div
+          ref={contentRef}
+          className="overflow-auto relative min-h-0 min-w-0"
+          onClick={() => splitMode && setFocusedPane('primary')}
+          style={{
+            borderLeft: `3px solid ${splitMode && focusedPane === 'primary' ? ACCENT : ACCENT + '30'}`,
+            ...(splitMode
+              ? isLandscape
+                ? { width: `${splitRatio * 100}%`, flexShrink: 0 }
+                : { height: `${splitRatio * 100}%`, flexShrink: 0 }
+              : { flex: 1 }),
+          }}
+        >
+          {content ? (
+            <pre className="p-4 text-[12px] leading-[1.7] whitespace-pre-wrap break-words">
+              {coloredLines.map((line, i) => (
+                <span key={i}>
+                  <span style={{ color: line.color, fontWeight: line.bold ? 600 : 400 }}>
+                    {line.text}
+                  </span>
+                  {i < coloredLines.length - 1 ? '\n' : ''}
                 </span>
-                {i < coloredLines.length - 1 ? '\n' : ''}
-              </span>
-            ))}
-          </pre>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Clock className="w-5 h-5 text-zinc-700 animate-pulse" />
-            <span className="text-[11px] text-zinc-700 tracking-wider">WAITING FOR OUTPUT</span>
+              ))}
+              <span className="cursor-blink" style={{ color: ACCENT }}>█</span>
+            </pre>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-3">
+              <Clock className="w-5 h-5 text-zinc-700 animate-pulse" />
+              <span className="text-[11px] text-zinc-700 tracking-wider">WAITING FOR OUTPUT</span>
+            </div>
+          )}
+        </div>
+
+        {/* Drag divider */}
+        {splitMode && (
+          <div
+            className={`flex-shrink-0 flex items-center justify-center touch-none ${isLandscape ? 'w-3 cursor-col-resize' : 'h-3 cursor-row-resize'}`}
+            style={{ backgroundColor: '#18181b' }}
+            onTouchMove={handleSplitDrag}
+          >
+            <div
+              className={`rounded-full bg-zinc-600 ${isLandscape ? 'w-1 h-8' : 'h-1 w-8'}`}
+            />
+          </div>
+        )}
+
+        {/* Split pane */}
+        {splitMode && (
+          <div
+            className="flex-1 flex flex-col min-h-0 min-w-0"
+            onClick={() => setFocusedPane('split')}
+          >
+            {/* Split pane tab bar */}
+            <div className="flex items-center bg-[#0f0f0f] border-b border-zinc-800/60 flex-shrink-0 overflow-x-auto no-scrollbar">
+              {splitWindow?.tabs.map((tab) => {
+                const isActive = splitTabId === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={(e) => { e.stopPropagation(); handleSplitTabClick(tab); }}
+                    onTouchStart={() => { longPressRef.current = setTimeout(() => handleTabLongPress(tab), 500); }}
+                    onTouchEnd={() => { if (longPressRef.current) clearTimeout(longPressRef.current); }}
+                    onTouchMove={() => { if (longPressRef.current) clearTimeout(longPressRef.current); }}
+                    className={`flex items-center gap-2 text-[10px] tracking-wider transition-all relative flex-shrink-0 active:opacity-70 px-3 min-h-[30px]`}
+                    style={{
+                      color: isActive ? '#38bdf8' : '#52525b',
+                      backgroundColor: isActive ? '#38bdf810' : 'transparent',
+                    }}
+                  >
+                    {isActive && (
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#38bdf8' }} />
+                    )}
+                    <span className="font-semibold whitespace-nowrap">
+                      {tab.sessions[0]?.name || `Tab ${tab.index}`}
+                    </span>
+                    {isActive && (
+                      <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full" style={{ backgroundColor: '#38bdf8' }} />
+                    )}
+                  </button>
+                );
+              })}
+              <div className="flex items-center flex-shrink-0 ml-auto border-l border-zinc-800/60">
+                <span className="text-[10px] text-zinc-600 font-bold px-2 tabular-nums">{splitTabCount}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); socketRef.current?.emit('closeTab'); }}
+                  disabled={splitTabCount <= 1}
+                  className="flex items-center justify-center w-8 min-h-[30px] text-zinc-600 active:text-red-400 transition-colors disabled:opacity-20"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); socketRef.current?.emit('newTab'); }}
+                  className="flex items-center justify-center w-8 min-h-[30px] text-zinc-600 active:text-zinc-400 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+                {state.length > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowSplitMap(!showSplitMap); }}
+                    className="text-[9px] font-bold tracking-wide px-2 py-0.5 rounded-md border transition-all active:scale-95 mr-1"
+                    style={{
+                      color: '#38bdf8',
+                      backgroundColor: 'transparent',
+                      borderColor: '#38bdf840',
+                    }}
+                  >
+                    {state.length} win
+                  </button>
+                )}
+              </div>
+            </div>
+            <div
+              ref={splitContentRef}
+              className="flex-1 overflow-auto relative min-h-0 min-w-0"
+              style={{ borderLeft: `3px solid ${focusedPane === 'split' ? '#38bdf8' : '#38bdf830'}` }}
+            >
+              {splitContent ? (
+                <pre className="p-4 text-[12px] leading-[1.7] whitespace-pre-wrap break-words">
+                  {splitColoredLines.map((line, i) => (
+                    <span key={i}>
+                      <span style={{ color: line.color, fontWeight: line.bold ? 600 : 400 }}>
+                        {line.text}
+                      </span>
+                      {i < splitColoredLines.length - 1 ? '\n' : ''}
+                    </span>
+                  ))}
+                  <span className="cursor-blink" style={{ color: '#38bdf8' }}>█</span>
+                </pre>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-3">
+                  <span className="text-[11px] text-zinc-700 tracking-wider">SELECT A SESSION</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -758,6 +1077,8 @@ export default function App() {
           .pl-safe { padding-left: max(0px, env(safe-area-inset-left)); }
           .pr-safe { padding-right: max(0px, env(safe-area-inset-right)); }
         }
+        .cursor-blink { animation: blink 1s step-end infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
