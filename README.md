@@ -45,7 +45,7 @@ Open the printed URL on your phone (same Wi-Fi network).
 ## Manual Setup
 
 ```bash
-git clone https://github.com/zmmmdf/remote-iterm.git
+git clone https://github.com/mammadovziya/remote-iterm.git
 cd remote-iterm
 cd server && npm install && cd ../client && npm install
 ./iterm-server

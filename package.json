@@ -24,9 +24,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zmmmdf/remote-iterm.git"
+    "url": "git+https://github.com/mammadovziya/remote-iterm.git"
   },
-  "homepage": "https://github.com/zmmmdf/remote-iterm#readme",
+  "homepage": "https://github.com/mammadovziya/remote-iterm#readme",
   "os": [
     "darwin"
   ],
