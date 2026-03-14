@@ -879,7 +879,7 @@ export default function App() {
                   {i < coloredLines.length - 1 ? '\n' : ''}
                 </span>
               ))}
-              <span className="cursor-blink" style={{ color: ACCENT }}>█</span>
+              {focusedPane === 'primary' && <span className="cursor-blink" style={{ color: ACCENT }}>█</span>}
             </pre>
           ) : (
             <div className="flex flex-col items-center justify-center h-full gap-3">
@@ -982,7 +982,7 @@ export default function App() {
                       {i < splitColoredLines.length - 1 ? '\n' : ''}
                     </span>
                   ))}
-                  <span className="cursor-blink" style={{ color: '#38bdf8' }}>█</span>
+                  {focusedPane === 'split' && <span className="cursor-blink" style={{ color: '#38bdf8' }}>█</span>}
                 </pre>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-3">
