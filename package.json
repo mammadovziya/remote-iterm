@@ -1,0 +1,45 @@
+{
+  "name": "remote-iterm",
+  "version": "1.0.0",
+  "description": "Control iTerm2 from your phone over local network",
+  "bin": {
+    "iterm-server": "./iterm-server"
+  },
+  "scripts": {
+    "postinstall": "cd server && npm install && cd ../client && npm install",
+    "start": "./iterm-server start",
+    "stop": "./iterm-server stop",
+    "restart": "./iterm-server restart"
+  },
+  "keywords": [
+    "iterm",
+    "iterm2",
+    "terminal",
+    "remote",
+    "macos",
+    "mobile",
+    "applescript"
+  ],
+  "author": "mammadovziya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zmmmdf/remote-iterm.git"
+  },
+  "homepage": "https://github.com/zmmmdf/remote-iterm#readme",
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "iterm-server",
+    "server/",
+    "client/",
+    "!server/node_modules",
+    "!client/node_modules",
+    "!client/dist",
+    "README.md"
+  ]
+}

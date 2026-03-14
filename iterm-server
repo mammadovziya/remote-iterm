@@ -1,0 +1,55 @@
+#!/bin/bash
+# Remote iTerm — server (7291) + client dev (7292)
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do SOURCE="$(readlink "$SOURCE")"; done
+DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+PIDFILE="$DIR/.iterm-server.pid"
+LOGFILE="$DIR/.iterm-server.log"
+
+get_local_ip() {
+  ipconfig getifaddr en0 2>/dev/null || echo "localhost"
+}
+
+do_start() {
+  if [ -f "$PIDFILE" ] && kill -0 $(head -1 "$PIDFILE" 2>/dev/null) 2>/dev/null; then
+    echo "  Already running"
+    return 1
+  fi
+
+  cd "$DIR/server" && node index.js >> "$LOGFILE" 2>&1 &
+  SERVER_PID=$!
+
+  cd "$DIR/client" && npx vite --host --port 7292 >> "$LOGFILE" 2>&1 &
+  CLIENT_PID=$!
+
+  echo "$SERVER_PID $CLIENT_PID" > "$PIDFILE"
+
+  IP=$(get_local_ip)
+  echo ""
+  echo "  Remote iTerm"
+  echo "  Local:    http://localhost:7292"
+  echo "  Network:  http://${IP}:7292"
+  echo ""
+}
+
+do_stop() {
+  if [ ! -f "$PIDFILE" ]; then
+    echo "  Not running"
+    return 1
+  fi
+  read -r PIDS < "$PIDFILE"
+  kill $PIDS 2>/dev/null
+  for pid in $PIDS; do
+    pkill -P "$pid" 2>/dev/null
+  done
+  rm -f "$PIDFILE"
+  echo "  Stopped"
+}
+
+case "${1:-start}" in
+  start)   do_start ;;
+  stop)    do_stop ;;
+  restart) do_stop; sleep 1; do_start ;;
+  *)       echo "Usage: iterm-server [start|stop|restart]" ;;
+esac
