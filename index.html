@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>remote-iterm — Control iTerm2 from your phone</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Syne:wght@400;600;700;800&display=swap');
+
+        :root {
+            --bg: #060608;
+            --surface: #0c0c10;
+            --surface2: #111118;
+            --border: #1a1a24;
+            --border2: #24243a;
+            --accent: #10b981;
+            --accent2: #34d399;
+            --cyan: #22d3ee;
+            --blue: #38bdf8;
+            --purple: #a78bfa;
+            --red: #f87171;
+            --dim: #333348;
+            --text: #e8e8ec;
+            --muted: #555568;
+            --muted2: #8888a0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Syne', sans-serif;
+            overflow-x: hidden;
+            cursor: none;
+        }
+
+        /* Custom cursor */
+        .cursor {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform 0.1s;
+            mix-blend-mode: difference;
+        }
+
+        .cursor-ring {
+            width: 32px;
+            height: 32px;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-radius: 50%;
+            position: fixed;
+            pointer-events: none;
+            z-index: 9998;
+            transition: all 0.12s ease;
+        }
+
+        /* Scanlines */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(16, 185, 129, 0.008) 3px, rgba(16, 185, 129, 0.008) 6px);
+            pointer-events: none;
+            z-index: 9000;
+        }
+
+        /* Nav */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid transparent;
+            transition: all 0.3s;
+        }
+
+        nav.scrolled {
+            border-color: var(--border);
+            background: rgba(6, 6, 8, 0.92);
+            backdrop-filter: blur(20px);
+        }
+
+        .nav-logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 800;
+            font-size: 17px;
+            letter-spacing: -0.5px;
+            color: var(--muted2);
+        }
+
+        .nav-logo span {
+            color: var(--accent);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            text-decoration: none;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        .nav-cta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 8px 20px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            text-decoration: none;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .nav-cta:hover {
+            background: var(--accent);
+            color: #000;
+        }
+
+        /* Hero */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 120px 40px 80px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-grid {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(16, 185, 129, 0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(16, 185, 129, 0.025) 1px, transparent 1px);
+            background-size: 80px 80px;
+            mask-image: radial-gradient(ellipse 70% 50% at 50% 40%, black, transparent);
+        }
+
+        .hero-glow {
+            position: absolute;
+            width: 700px;
+            height: 500px;
+            background: radial-gradient(ellipse, rgba(16, 185, 129, 0.06) 0%, transparent 70%);
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .hero-glow-2 {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(56, 189, 248, 0.04) 0%, transparent 70%);
+            top: 30%;
+            right: 10%;
+            pointer-events: none;
+        }
+
+        .hero-inner {
+            position: relative;
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .hero-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+            opacity: 0;
+            animation: fadeUp 0.6s ease 0.1s forwards;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hero-tag::before {
+            content: '';
+            width: 24px;
+            height: 1px;
+            background: var(--accent);
+        }
+
+        .hero-title {
+            font-size: clamp(56px, 9vw, 110px);
+            font-weight: 800;
+            line-height: 0.92;
+            letter-spacing: -4px;
+            margin-bottom: 32px;
+            opacity: 0;
+            animation: fadeUp 0.7s ease 0.2s forwards;
+        }
+
+        .hero-title .line2 {
+            color: var(--accent);
+            display: block;
+        }
+
+        .hero-title .line3 {
+            font-size: 0.55em;
+            color: var(--muted);
+            display: block;
+            letter-spacing: -2px;
+        }
+
+        .hero-desc {
+            font-size: 18px;
+            color: var(--muted2);
+            max-width: 500px;
+            line-height: 1.7;
+            margin-bottom: 48px;
+            opacity: 0;
+            animation: fadeUp 0.7s ease 0.3s forwards;
+        }
+
+        .hero-desc strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            opacity: 0;
+            animation: fadeUp 0.7s ease 0.4s forwards;
+        }
+
+        .btn-primary {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 14px 32px;
+            background: var(--accent);
+            color: #000;
+            border: none;
+            letter-spacing: 1px;
+            cursor: none;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateX(-100%);
+            transition: transform 0.3s;
+        }
+
+        .btn-primary:hover::after {
+            transform: translateX(0);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-secondary {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted2);
+            text-decoration: none;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.2s;
+        }
+
+        .btn-secondary:hover {
+            color: var(--text);
+        }
+
+        .hero-stat-row {
+            display: flex;
+            gap: 48px;
+            margin-top: 80px;
+            padding-top: 40px;
+            border-top: 1px solid var(--border);
+            opacity: 0;
+            animation: fadeUp 0.7s ease 0.6s forwards;
+            flex-wrap: wrap;
+        }
+
+        .hero-stat .num {
+            font-size: 36px;
+            font-weight: 800;
+            letter-spacing: -2px;
+            color: var(--text);
+        }
+
+        .hero-stat .num span {
+            color: var(--accent);
+        }
+
+        .hero-stat .label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Phone mockup section */
+        .phone-section {
+            padding: 100px 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .section-eyebrow {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--dim);
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-eyebrow::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .section-title {
+            font-size: clamp(32px, 5vw, 52px);
+            font-weight: 800;
+            letter-spacing: -2px;
+            margin-bottom: 16px;
+            line-height: 1;
+        }
+
+        .section-title span {
+            color: var(--accent);
+        }
+
+        .section-sub {
+            font-size: 16px;
+            color: var(--muted2);
+            max-width: 480px;
+            line-height: 1.6;
+            margin-bottom: 48px;
+        }
+
+        /* Phone frame */
+        .phone-frame {
+            width: 320px;
+            margin: 0 auto;
+            border: 2px solid var(--border2);
+            border-radius: 36px;
+            background: #000;
+            padding: 16px;
+            position: relative;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6), 0 0 120px rgba(16, 185, 129, 0.06);
+        }
+
+        .phone-notch {
+            width: 120px;
+            height: 28px;
+            background: #000;
+            border-radius: 0 0 16px 16px;
+            margin: -16px auto 8px;
+            border: 2px solid var(--border2);
+            border-top: none;
+        }
+
+        .phone-screen {
+            border-radius: 20px;
+            overflow: hidden;
+            background: var(--bg);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .phone-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
+        }
+
+        .phone-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent2);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .phone-tabs {
+            display: flex;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 9px;
+        }
+
+        .phone-tab {
+            padding: 8px 14px;
+            color: var(--muted);
+        }
+
+        .phone-tab.active {
+            color: var(--accent);
+            border-bottom: 2px solid var(--accent);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .phone-terminal {
+            padding: 12px;
+            font-size: 10px;
+            line-height: 1.8;
+            min-height: 200px;
+        }
+
+        .phone-terminal .p { color: var(--cyan); }
+        .phone-terminal .g { color: var(--accent2); }
+        .phone-terminal .r { color: var(--red); }
+        .phone-terminal .w { color: var(--muted2); }
+        .phone-terminal .b { color: var(--blue); }
+        .phone-terminal .d { color: var(--muted); }
+        .phone-terminal .cursor-block {
+            display: inline-block;
+            width: 6px;
+            height: 12px;
+            background: var(--accent);
+            vertical-align: middle;
+            animation: blink 1s step-end infinite;
+        }
+
+        .phone-qbar {
+            display: flex;
+            gap: 4px;
+            padding: 6px 8px;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .qbtn {
+            padding: 5px 8px;
+            border: 1px solid var(--border2);
+            border-radius: 6px;
+            font-size: 8px;
+            font-weight: 700;
+            color: var(--muted2);
+            background: var(--surface2);
+        }
+
+        .qbtn.red { color: var(--red); border-color: rgba(248, 113, 113, 0.2); }
+        .qbtn.blue { color: var(--blue); border-color: rgba(56, 189, 248, 0.2); }
+        .qbtn.purple { color: var(--purple); border-color: rgba(167, 139, 250, 0.2); }
+
+        .phone-input {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .phone-input-field {
+            flex: 1;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 7px 12px;
+            font-size: 10px;
+            color: var(--muted);
+            background: var(--surface2);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .phone-send {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phone-send svg {
+            width: 12px;
+            height: 12px;
+            fill: #000;
+        }
+
+        /* How it works */
+        .how-section {
+            padding: 100px 40px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .how-inner {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .steps-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            margin-top: 48px;
+            position: relative;
+        }
+
+        .step-card {
+            background: var(--bg);
+            padding: 40px 32px;
+            border: 1px solid var(--border);
+            position: relative;
+            transition: border-color 0.3s;
+        }
+
+        .step-card:hover {
+            border-color: var(--border2);
+        }
+
+        .step-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--step-color, var(--accent));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s;
+        }
+
+        .step-card:hover::after {
+            transform: scaleX(1);
+        }
+
+        .step-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 52px;
+            font-weight: 800;
+            color: var(--border);
+            line-height: 1;
+            margin-bottom: 24px;
+            transition: color 0.2s;
+        }
+
+        .step-card:hover .step-num {
+            color: var(--border2);
+        }
+
+        .step-icon {
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        .step-card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .step-card p {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .step-card code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--surface2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: var(--accent2);
+        }
+
+        /* Features */
+        .features-section {
+            padding: 100px 40px;
+        }
+
+        .features-inner {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 48px;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            transition: border-color 0.2s, transform 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+            background: var(--feat-color, var(--accent));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--border2);
+            transform: translateY(-2px);
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feat-icon {
+            font-size: 24px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .feature-card h3 {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .feature-card p {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* Requirements */
+        .req-section {
+            padding: 80px 40px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .req-inner {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: flex;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .req-list {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+
+        .req-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .req-icon {
+            width: 48px;
+            height: 48px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            background: var(--bg);
+        }
+
+        .req-item h4 {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .req-item p {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Install */
+        .install-section {
+            padding: 100px 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .install-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 48px;
+            margin-top: 48px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .install-box::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 20%;
+            right: 20%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
+
+        .install-cmd {
+            display: flex;
+            align-items: center;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 24px;
+            gap: 16px;
+            margin: 32px auto;
+            max-width: 480px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .install-cmd:hover {
+            border-color: var(--accent);
+        }
+
+        .install-cmd code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            color: var(--accent2);
+            flex: 1;
+            text-align: left;
+        }
+
+        .install-cmd .prompt {
+            color: var(--muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .copy-btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: color 0.2s;
+        }
+
+        .install-cmd:hover .copy-btn {
+            color: var(--accent);
+        }
+
+        .install-note {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 16px;
+        }
+
+        .install-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .footer-logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 800;
+            font-size: 15px;
+            color: var(--muted2);
+        }
+
+        .footer-logo span {
+            color: var(--accent);
+        }
+
+        .footer-copy {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 1px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+            list-style: none;
+        }
+
+        .footer-links a {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            text-decoration: none;
+            letter-spacing: 1px;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: var(--text);
+        }
+
+        /* Scroll reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* Responsive */
+        @media (max-width: 700px) {
+            nav { padding: 16px 20px; }
+            .nav-links { display: none; }
+            .hero { padding: 100px 20px 60px; }
+            .hero-title { letter-spacing: -2px; }
+            .hero-stat-row { gap: 24px; }
+            .phone-section,
+            .features-section,
+            .install-section { padding: 60px 20px; }
+            .how-section,
+            .req-section { padding: 60px 20px; }
+            .steps-row { grid-template-columns: 1fr; }
+            .req-inner { flex-direction: column; gap: 32px; }
+            .req-list { gap: 24px; }
+            footer {
+                padding: 30px 20px;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Cursor -->
+    <div class="cursor" id="cursor"></div>
+    <div class="cursor-ring" id="cursorRing"></div>
+
+    <!-- Nav -->
+    <nav id="nav">
+        <div class="nav-logo">remote<span>-iterm</span></div>
+        <ul class="nav-links">
+            <li><a href="#demo">Preview</a></li>
+            <li><a href="#how">Setup</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#install">Install</a></li>
+        </ul>
+        <a href="#install" class="nav-cta">npm install</a>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-grid"></div>
+        <div class="hero-glow"></div>
+        <div class="hero-glow-2"></div>
+        <div class="hero-inner">
+            <div class="hero-tag">macOS terminal tool</div>
+            <h1 class="hero-title">
+                Control iTerm2
+                <span class="line2">from your phone</span>
+                <span class="line3">over local Wi-Fi</span>
+            </h1>
+            <p class="hero-desc">
+                Long deploy running? Walk away. <strong>Your terminal lives on your phone now.</strong>
+                Split panes, tab management, quick actions — the whole thing.
+            </p>
+            <div class="hero-actions">
+                <a href="#install" class="btn-primary">npm install -g remote-iterm →</a>
+                <a href="#demo" class="btn-secondary">
+                    <span>↓</span> see the interface
+                </a>
+            </div>
+            <div class="hero-stat-row">
+                <div class="hero-stat">
+                    <div class="num">1<span>cmd</span></div>
+                    <div class="label">to start</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="num">&lt;5<span>ms</span></div>
+                    <div class="label">local latency</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="num">20<span>+</span></div>
+                    <div class="label">features</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="num">PWA</div>
+                    <div class="label">add to home</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Phone Preview -->
+    <section class="phone-section reveal" id="demo">
+        <div class="section-eyebrow">live interface</div>
+        <h2 class="section-title">Your terminal,<br><span>in your pocket.</span></h2>
+        <p class="section-sub">Real-time output with syntax coloring, tab management, and all the shortcuts you need.</p>
+
+        <div class="phone-frame">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+                <div class="phone-topbar">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="phone-dot"></div>
+                        <span style="font-size:9px;font-weight:800;letter-spacing:2px;color:var(--muted)">iTERM</span>
+                        <span style="font-size:9px;color:var(--accent2)">4ms</span>
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        <span style="font-size:8px;color:var(--muted);border:1px solid var(--border);padding:2px 6px;border-radius:3px">SPLIT</span>
+                        <span style="font-size:8px;color:var(--muted);border:1px solid var(--border);padding:2px 6px;border-radius:3px">2 win</span>
+                    </div>
+                </div>
+                <div class="phone-tabs">
+                    <div class="phone-tab active">zsh</div>
+                    <div class="phone-tab">node</div>
+                    <div class="phone-tab">logs</div>
+                </div>
+                <div class="phone-terminal">
+                    <div><span class="p">ziya@mbp</span> <span class="d">~/project</span></div>
+                    <div><span class="b">$</span> <span class="w">npm run deploy</span></div>
+                    <div class="d">&nbsp;</div>
+                    <div><span class="g">✓</span> <span class="w">Building production bundle...</span></div>
+                    <div><span class="g">✓</span> <span class="w">Optimizing assets</span> <span class="d">(2.1s)</span></div>
+                    <div><span class="g">✓</span> <span class="w">Uploading to CDN</span> <span class="d">(847ms)</span></div>
+                    <div class="d">&nbsp;</div>
+                    <div><span class="g">deployed</span> <span class="b">https://app.example.com</span></div>
+                    <div class="d">&nbsp;</div>
+                    <div><span class="p">ziya@mbp</span> <span class="d">~/project</span></div>
+                    <div><span class="b">$</span> <span class="cursor-block"></span></div>
+                </div>
+                <div class="phone-qbar">
+                    <div class="qbtn red">ESC</div>
+                    <div class="qbtn red">^C</div>
+                    <div class="qbtn">^D</div>
+                    <div class="qbtn blue">^L</div>
+                    <div class="qbtn purple">▲</div>
+                    <div class="qbtn purple">▼</div>
+                    <div class="qbtn">TAB</div>
+                </div>
+                <div class="phone-input">
+                    <div class="phone-input-field">
+                        <span style="color:var(--accent);font-weight:700">$</span>
+                        <span>command...</span>
+                    </div>
+                    <div class="phone-send">
+                        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="how-section reveal" id="how">
+        <div class="how-inner">
+            <div class="section-eyebrow">setup</div>
+            <h2 class="section-title">Three steps.<br><span>That's it.</span></h2>
+            <p class="section-sub">No config files, no auth, no cloud. Just your Mac and your phone on the same network.</p>
+
+            <div class="steps-row">
+                <div class="step-card" style="--step-color: var(--accent)">
+                    <div class="step-num">01</div>
+                    <div class="step-icon">⬇</div>
+                    <h3>Install</h3>
+                    <p>One command: <code>npm i -g remote-iterm</code>. That's your global CLI ready.</p>
+                </div>
+                <div class="step-card" style="--step-color: var(--cyan)">
+                    <div class="step-num">02</div>
+                    <div class="step-icon">▶</div>
+                    <h3>Start</h3>
+                    <p>Run <code>remote-iterm</code>. Scan the QR code from your phone. Done.</p>
+                </div>
+                <div class="step-card" style="--step-color: var(--blue)">
+                    <div class="step-num">03</div>
+                    <div class="step-icon">📱</div>
+                    <h3>Control</h3>
+                    <p>Full terminal access from your phone. Commands, tabs, split panes, clipboard.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features-section reveal" id="features">
+        <div class="features-inner">
+            <div class="section-eyebrow">capabilities</div>
+            <h2 class="section-title">Everything you need.<br><span>Nothing you don't.</span></h2>
+            <p class="section-sub">Built for real terminal workflows, not demos.</p>
+
+            <div class="features-grid">
+                <div class="feature-card" style="--feat-color: var(--accent)">
+                    <span class="feat-icon">🖥</span>
+                    <h3>Real-time output</h3>
+                    <p>Terminal content streams live with syntax coloring</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--cyan)">
+                    <span class="feat-icon">📑</span>
+                    <h3>Tab management</h3>
+                    <p>Create, close, rename tabs via long-press</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--blue)">
+                    <span class="feat-icon">🪟</span>
+                    <h3>Multi-window</h3>
+                    <p>Spatial map of all iTerm windows with selection</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--purple)">
+                    <span class="feat-icon">⬜</span>
+                    <h3>Split pane</h3>
+                    <p>View 2 sessions at once with independent controls</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--accent)">
+                    <span class="feat-icon">📡</span>
+                    <h3>Broadcast</h3>
+                    <p>Send commands to multiple windows simultaneously</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--cyan)">
+                    <span class="feat-icon">⌨️</span>
+                    <h3>Virtual keyboard</h3>
+                    <p>Full keyboard with symbols, brackets, special keys</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--blue)">
+                    <span class="feat-icon">⚡</span>
+                    <h3>Quick actions</h3>
+                    <p>ESC, Ctrl+C, Ctrl+Z, arrows, tab — one tap</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--purple)">
+                    <span class="feat-icon">📋</span>
+                    <h3>Clipboard</h3>
+                    <p>Paste from phone or copy terminal output</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--accent)">
+                    <span class="feat-icon">📱</span>
+                    <h3>PWA</h3>
+                    <p>Add to home screen for native app feel</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--cyan)">
+                    <span class="feat-icon">🔔</span>
+                    <h3>Alerts</h3>
+                    <p>Vibrate when long-running commands finish</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--blue)">
+                    <span class="feat-icon">🔒</span>
+                    <h3>Scroll lock</h3>
+                    <p>Freeze output to read while commands run</p>
+                </div>
+                <div class="feature-card" style="--feat-color: var(--purple)">
+                    <span class="feat-icon">🔄</span>
+                    <h3>Landscape</h3>
+                    <p>Optimized layout for horizontal phone use</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Requirements -->
+    <section class="req-section reveal">
+        <div class="req-inner">
+            <div>
+                <div class="section-eyebrow" style="margin-bottom:16px">requirements</div>
+                <h2 class="section-title" style="font-size:32px">What you <span>need</span></h2>
+            </div>
+            <div class="req-list">
+                <div class="req-item">
+                    <div class="req-icon">🍎</div>
+                    <div>
+                        <h4>macOS</h4>
+                        <p>with iTerm2</p>
+                    </div>
+                </div>
+                <div class="req-item">
+                    <div class="req-icon">⬢</div>
+                    <div>
+                        <h4>Node.js</h4>
+                        <p>>= 18</p>
+                    </div>
+                </div>
+                <div class="req-item">
+                    <div class="req-icon">📶</div>
+                    <div>
+                        <h4>Same Wi-Fi</h4>
+                        <p>phone + mac</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Install -->
+    <section class="install-section reveal" id="install">
+        <div class="section-eyebrow" style="justify-content:center">get started</div>
+        <h2 class="section-title">Install in <span>one line.</span></h2>
+        <p class="section-sub" style="margin:16px auto 0;text-align:center">Works globally. No config needed.</p>
+
+        <div class="install-box">
+            <div class="install-cmd" onclick="navigator.clipboard.writeText('npm install -g remote-iterm'); this.querySelector('.copy-btn').textContent='COPIED!'">
+                <span class="prompt">$</span>
+                <code>npm install -g remote-iterm</code>
+                <span class="copy-btn">COPY</span>
+            </div>
+            <div class="install-note">Then just run <strong style="color:var(--accent2)">remote-iterm</strong> and scan the QR code</div>
+            <div class="install-actions">
+                <a href="https://github.com/mammadovziya/remote-iterm" class="btn-secondary" target="_blank">
+                    GitHub →
+                </a>
+                <a href="https://www.npmjs.com/package/remote-iterm" class="btn-secondary" target="_blank">
+                    npm ↗
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-logo">remote<span>-iterm</span></div>
+        <div class="footer-copy">Built with obsession by Ziya Mammadov</div>
+        <ul class="footer-links">
+            <li><a href="https://github.com/mammadovziya/remote-iterm" target="_blank">GitHub</a></li>
+            <li><a href="https://www.npmjs.com/package/remote-iterm" target="_blank">npm</a></li>
+            <li><a href="https://ziyamammadov.me" target="_blank">Portfolio</a></li>
+        </ul>
+    </footer>
+
+    <script>
+        // Custom cursor
+        const cursor = document.getElementById('cursor');
+        const ring = document.getElementById('cursorRing');
+        document.addEventListener('mousemove', e => {
+            cursor.style.left = e.clientX - 4 + 'px';
+            cursor.style.top = e.clientY - 4 + 'px';
+            ring.style.left = e.clientX - 16 + 'px';
+            ring.style.top = e.clientY - 16 + 'px';
+        });
+        document.querySelectorAll('a, button, .install-cmd').forEach(el => {
+            el.addEventListener('mouseenter', () => {
+                ring.style.transform = 'scale(1.6)';
+                ring.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+            });
+            el.addEventListener('mouseleave', () => {
+                ring.style.transform = 'scale(1)';
+                ring.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            });
+        });
+
+        // Nav scroll
+        const nav = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 40);
+        });
+
+        // Reveal on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) e.target.classList.add('visible');
+            });
+        }, { threshold: 0.1 });
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    </script>
+
+</body>
+
+</html>
